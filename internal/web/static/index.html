@@ -127,6 +127,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="ports-grid" id="portsList"></div>
 </div>
 
+<div class="card full" id="wgCard" style="display:none">
+<div class="card-title">VPN Server <span id="wgStatus" style="font-size:11px;color:#4caf50"></span></div>
+<div class="stats-grid" style="margin-bottom:16px">
+<div class="stat-box"><div class="stat-value" id="wg-pubkey" style="font-size:11px;word-break:break-all;font-family:'JetBrains Mono',monospace">-</div><div class="stat-label">Public Key</div></div>
+<div class="stat-box"><div class="stat-value" id="wg-endpoint" style="font-size:14px">-</div><div class="stat-label">Endpoint</div></div>
+<div class="stat-box"><div class="stat-value" id="wg-port">-</div><div class="stat-label">Port</div></div>
+<div class="stat-box"><div class="stat-value" id="wg-peers">0</div><div class="stat-label">Peers</div></div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<span style="font-size:12px;color:#888;text-transform:uppercase;font-weight:600;letter-spacing:.5px">Connected Peers</span>
+<button class="btn btn-primary btn-sm" onclick="openAddPeerModal()">+ Add Peer</button>
+</div>
+<div class="tunnel-list" id="wgPeerList">
+<div class="empty-state" style="padding:20px"><p style="color:#666">No peers configured yet.</p></div>
+</div>
+</div>
+
 <div class="card full">
 <div class="card-title">Tunnels <span id="tunnelCount" style="color:#7c4dff"></span></div>
 <div id="tunnelContainer">
@@ -170,6 +187,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="form-group"><label>Endpoint</label><input type="text" id="cEndpoint" placeholder="vpn.example.com:51820"></div>
 <button class="btn btn-primary" onclick="importCustom()" style="width:100%">Create Tunnel</button>
 </div>
+</div>
+</div>
+
+<!-- Add Peer Modal -->
+<div class="modal-overlay" id="addPeerModal">
+<div class="modal">
+<h2>Add VPN Peer <button class="close-btn" onclick="closeAddPeerModal()">&times;</button></h2>
+<div class="form-group"><label>Peer Name</label><input type="text" id="peerName" placeholder="my-phone"></div>
+<button class="btn btn-primary" onclick="createPeer()" style="width:100%">Create Peer</button>
+<div id="peerCreateStatus" style="margin-top:8px;font-size:12px;color:#888"></div>
+</div>
+</div>
+
+<!-- Peer Config Modal -->
+<div class="modal-overlay" id="peerConfigModal">
+<div class="modal">
+<h2>Client Configuration <button class="close-btn" onclick="closePeerConfigModal()">&times;</button></h2>
+<p style="font-size:12px;color:#888;margin-bottom:12px">Copy this config to your WireGuard client or download the .conf file.</p>
+<div style="position:relative">
+<pre id="peerConfigText" style="background:#0d0d0d;border-radius:8px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#4caf50;white-space:pre-wrap;word-break:break-all;overflow-x:auto;max-height:300px;overflow-y:auto"></pre>
+<button class="btn btn-blue btn-sm" onclick="copyPeerConfig()" style="position:absolute;top:8px;right:8px">Copy</button>
+</div>
+<button class="btn btn-success" onclick="downloadPeerConfig()" style="width:100%;margin-top:12px">&#x2B07; Download .conf</button>
 </div>
 </div>
 
@@ -422,8 +462,114 @@ document.getElementById('importModal').addEventListener('click',function(e){
 if(e.target===this)closeImportModal();
 });
 
+// --- VPN Server (WireGuard) ---
+var lastPeerConfig={name:'',ini:''};
+
+function loadWGStatus(){
+fetch('/api/wg/status').then(function(r){return r.json()}).then(function(data){
+if(!data.running&&!data.public_key){document.getElementById('wgCard').style.display='none';return;}
+document.getElementById('wgCard').style.display='';
+document.getElementById('wgStatus').textContent=data.running?'● Running':'○ Stopped';
+document.getElementById('wgStatus').style.color=data.running?'#4caf50':'#f44336';
+document.getElementById('wg-pubkey').textContent=data.public_key||'-';
+document.getElementById('wg-endpoint').textContent=data.endpoint||'-';
+document.getElementById('wg-port').textContent=data.port||'-';
+document.getElementById('wg-peers').textContent=data.peer_count||0;
+}).catch(function(){document.getElementById('wgCard').style.display='none'});
+}
+
+function loadWGPeers(){
+fetch('/api/wg/peers').then(function(r){return r.json()}).then(function(peers){
+var container=document.getElementById('wgPeerList');
+if(!peers||peers.length===0){
+container.innerHTML='<div class="empty-state" style="padding:20px"><p style="color:#666">No peers configured yet.</p></div>';
+return;
+}
+var html='';
+for(var i=0;i<peers.length;i++){
+var p=peers[i];
+var ip=p.allowed_ip||'';
+var created=p.created_at?new Date(p.created_at).toLocaleDateString():'';
+html+='<div class="tunnel-item healthy" style="grid-template-columns:1fr auto">';
+html+='<div class="tunnel-info">';
+html+='<div class="tunnel-name">'+p.name+'</div>';
+html+='<div class="tunnel-meta"><span>IP: '+ip+'</span><span>Added: '+created+'</span></div>';
+html+='</div>';
+html+='<div class="tunnel-actions">';
+html+='<button class="btn btn-blue btn-sm" onclick="showPeerConfig(\''+p.name+'\')">Config</button>';
+html+='<button class="btn btn-danger btn-sm" onclick="deletePeer(\''+p.name+'\')">Delete</button>';
+html+='</div></div>';
+}
+container.innerHTML=html;
+}).catch(function(){});
+}
+
+window.openAddPeerModal=function(){
+document.getElementById('addPeerModal').classList.add('active');
+document.getElementById('peerName').value='';
+document.getElementById('peerCreateStatus').textContent='';
+};
+window.closeAddPeerModal=function(){document.getElementById('addPeerModal').classList.remove('active')};
+window.closePeerConfigModal=function(){document.getElementById('peerConfigModal').classList.remove('active')};
+
+window.createPeer=function(){
+var name=document.getElementById('peerName').value.trim();
+if(!name){document.getElementById('peerCreateStatus').textContent='Name is required';return}
+document.getElementById('peerCreateStatus').textContent='Creating...';
+fetch('/api/wg/peers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error){document.getElementById('peerCreateStatus').textContent='Error: '+d.error;return}
+closeAddPeerModal();
+lastPeerConfig={name:name,ini:d.config_ini||''};
+document.getElementById('peerConfigText').textContent=d.config_ini||'';
+document.getElementById('peerConfigModal').classList.add('active');
+loadWGStatus();loadWGPeers();
+addLog('<span style="color:#4caf50">VPN peer created: '+name+'</span>');
+}).catch(function(e){document.getElementById('peerCreateStatus').textContent='Failed: '+e.message});
+};
+
+window.showPeerConfig=function(name){
+fetch('/api/wg/peers/'+encodeURIComponent(name)+'/config')
+.then(function(r){return r.text()}).then(function(text){
+lastPeerConfig={name:name,ini:text};
+document.getElementById('peerConfigText').textContent=text;
+document.getElementById('peerConfigModal').classList.add('active');
+}).catch(function(e){addLog('<span style="color:#f44336">Failed to load config: '+e.message+'</span>')});
+};
+
+window.copyPeerConfig=function(){
+var text=document.getElementById('peerConfigText').textContent;
+if(navigator.clipboard){navigator.clipboard.writeText(text).then(function(){addLog('<span style="color:#4caf50">Config copied to clipboard</span>')})}
+else{var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);addLog('<span style="color:#4caf50">Config copied</span>')}
+};
+
+window.downloadPeerConfig=function(){
+var text=document.getElementById('peerConfigText').textContent;
+var blob=new Blob([text],{type:'text/plain'});
+var a=document.createElement('a');
+a.href=URL.createObjectURL(blob);
+a.download=(lastPeerConfig.name||'peer')+'.conf';
+a.click();URL.revokeObjectURL(a.href);
+};
+
+window.deletePeer=function(name){
+if(!confirm('Delete VPN peer "'+name+'"?'))return;
+fetch('/api/wg/peers/'+encodeURIComponent(name),{method:'DELETE'})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error){addLog('<span style="color:#f44336">Error: '+d.error+'</span>');return}
+addLog('<span style="color:#4caf50">VPN peer deleted: '+name+'</span>');
+loadWGStatus();loadWGPeers();
+}).catch(function(e){addLog('<span style="color:#f44336">Failed: '+e.message+'</span>')});
+};
+
+document.getElementById('addPeerModal').addEventListener('click',function(e){if(e.target===this)closeAddPeerModal()});
+document.getElementById('peerConfigModal').addEventListener('click',function(e){if(e.target===this)closePeerConfigModal()});
+
 connect();
 loadCountryPorts();
+loadWGStatus();
+loadWGPeers();
+setInterval(function(){loadWGStatus();loadWGPeers()},10000);
 addLog('Dashboard initialized');
 })();
 </script>

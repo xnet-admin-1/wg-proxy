@@ -12,10 +12,11 @@ import (
 	"github.com/xnet-admin/wg-proxy/internal/proxy"
 	"github.com/xnet-admin/wg-proxy/internal/tunnels"
 	"github.com/xnet-admin/wg-proxy/internal/web"
+	"github.com/xnet-admin/wg-proxy/internal/wgserver"
 )
 
 // RegisterRoutes sets up all HTTP routes.
-func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker, dash *web.Dashboard, ps *proxy.Server) {
+func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker, dash *web.Dashboard, ps *proxy.Server, wgs *wgserver.Server) {
 	mux.HandleFunc("/api/tunnels", func(w http.ResponseWriter, r *http.Request) {
 		handleTunnels(w, r, tm)
 	})
@@ -36,6 +37,15 @@ func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker,
 	})
 	mux.HandleFunc("/api/countries", func(w http.ResponseWriter, r *http.Request) {
 		handleCountries(w, r, ps)
+	})
+	mux.HandleFunc("/api/wg/status", func(w http.ResponseWriter, r *http.Request) {
+		handleWGStatus(w, r, wgs)
+	})
+	mux.HandleFunc("/api/wg/peers", func(w http.ResponseWriter, r *http.Request) {
+		handleWGPeers(w, r, wgs)
+	})
+	mux.HandleFunc("/api/wg/peers/", func(w http.ResponseWriter, r *http.Request) {
+		handleWGPeerAction(w, r, wgs)
 	})
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		dash.HandleSSE(w, r)
@@ -315,4 +325,90 @@ func handleCountries(w http.ResponseWriter, r *http.Request, ps *proxy.Server) {
 		return
 	}
 	writeJSON(w, 200, ps.GetCountryMapping())
+}
+
+func handleWGStatus(w http.ResponseWriter, r *http.Request, wgs *wgserver.Server) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", 405)
+		return
+	}
+	if wgs == nil {
+		writeJSON(w, 200, map[string]interface{}{"running": false, "enabled": false})
+		return
+	}
+	writeJSON(w, 200, wgs.Status())
+}
+
+func handleWGPeers(w http.ResponseWriter, r *http.Request, wgs *wgserver.Server) {
+	if wgs == nil {
+		writeJSON(w, 503, map[string]string{"error": "WG server not enabled"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		peers := wgs.ListPeers()
+		writeJSON(w, 200, peers)
+	case http.MethodPost:
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+			writeJSON(w, 400, map[string]string{"error": "missing or invalid 'name' field"})
+			return
+		}
+		clientConf, err := wgs.AddPeer(req.Name)
+		if err != nil {
+			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]interface{}{
+			"config":     clientConf,
+			"config_ini": clientConf.ToINI(),
+		})
+	default:
+		http.Error(w, "Method not allowed", 405)
+	}
+}
+
+func handleWGPeerAction(w http.ResponseWriter, r *http.Request, wgs *wgserver.Server) {
+	if wgs == nil {
+		writeJSON(w, 503, map[string]string{"error": "WG server not enabled"})
+		return
+	}
+
+	// Parse: /api/wg/peers/{name} or /api/wg/peers/{name}/config
+	path := strings.TrimPrefix(r.URL.Path, "/api/wg/peers/")
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) < 1 || parts[0] == "" {
+		http.Error(w, "Not found", 404)
+		return
+	}
+	name := parts[0]
+
+	// DELETE /api/wg/peers/{name}
+	if r.Method == http.MethodDelete {
+		if err := wgs.RemovePeer(name); err != nil {
+			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "deleted", "name": name})
+		return
+	}
+
+	// GET /api/wg/peers/{name}/config
+	if r.Method == http.MethodGet && len(parts) == 2 && parts[1] == "config" {
+		conf, err := wgs.GetClientConfig(name)
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.conf", name))
+		w.WriteHeader(200)
+		w.Write([]byte(conf.ToINI()))
+		return
+	}
+
+	http.Error(w, "Not found", 404)
 }

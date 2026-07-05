@@ -17,6 +17,13 @@ type Config struct {
 	ProxyUser       string        // SOCKS5 proxy username (optional)
 	ProxyPass       string        // SOCKS5 proxy password (optional)
 	CountryPortBase int           // Starting port for per-country SOCKS5 proxies
+
+	// WireGuard VPN Server
+	WGServerEnabled bool   // Enable built-in WireGuard VPN server
+	WGServerPort    int    // UDP listen port for WireGuard
+	WGServerAddr    string // Public IP/domain clients connect to
+	WGServerSubnet  string // Client IP subnet (CIDR)
+	WGServerDNS     string // DNS server pushed to clients
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -32,6 +39,12 @@ func Load() *Config {
 		ProxyUser:       envOrDefault("WG_PROXY_USER", ""),
 		ProxyPass:       envOrDefault("WG_PROXY_PASS", ""),
 		CountryPortBase: envOrDefaultInt("WG_COUNTRY_PORT_BASE", 1081),
+
+		WGServerEnabled: envOrDefaultBool("WG_SERVER_ENABLED", true),
+		WGServerPort:    envOrDefaultInt("WG_SERVER_PORT", 51820),
+		WGServerAddr:    envOrDefault("WG_SERVER_ADDR", ""),
+		WGServerSubnet:  envOrDefault("WG_SERVER_SUBNET", "10.100.0.0/24"),
+		WGServerDNS:     envOrDefault("WG_SERVER_DNS", "1.1.1.1"),
 	}
 }
 
@@ -69,4 +82,18 @@ func envOrDefaultDuration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+func envOrDefaultBool(key string, def bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	return def
 }
