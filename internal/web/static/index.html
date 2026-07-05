@@ -44,15 +44,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tunnel-name{font-weight:600;color:#fff;font-size:14px;display:flex;align-items:center;gap:8px}
 .tunnel-meta{font-size:11px;color:#888;display:flex;gap:12px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace}
 .tunnel-actions{display:flex;gap:6px;flex-wrap:wrap}
-.country-group{margin-bottom:12px}
+
 .country-header{background:#1a1a1a;border-radius:8px;padding:10px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border:1px solid #2a2a2a;user-select:none}
 .country-header:hover{background:#222}
 .country-header h3{font-size:14px;color:#fff;font-weight:600}
 .country-header .count{font-size:12px;color:#7c4dff;font-family:'JetBrains Mono',monospace}
-.country-header .arrow{color:#888;transition:transform .2s}
-.country-header.collapsed .arrow{transform:rotate(-90deg)}
+
+
 .country-body{display:flex;flex-direction:column;gap:8px;padding-left:8px}
-.country-body.hidden{display:none}
+
 .filter-select{background:#252525;color:#e0e0e0;border:1px solid #333;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}
 .filter-select:focus{outline:none;border-color:#7c4dff}
 .ports-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
@@ -258,27 +258,20 @@ var countries=Object.keys(groups).sort();
 // Update country filter options
 var sel=document.getElementById('countryFilter');
 var currentVal=sel.value;
-var opts='<option value="">All Countries</option>';
+var opts='<option value="">All Countries ('+tunnels.length+')</option>';
 for(var i=0;i<countries.length;i++){
 opts+='<option value="'+countries[i]+'">'+countries[i]+' ('+groups[countries[i]].length+')</option>';
 }
 sel.innerHTML=opts;
 sel.value=currentVal||filter;
 
+// Flat list - filter by country, sort healthy first then by latency
+var filtered=filter?tunnels.filter(function(t){return(t.name||'').substring(0,2).toUpperCase()===filter}):tunnels;
+filtered.sort(function(a,b){if(a.healthy&&!b.healthy)return -1;if(!a.healthy&&b.healthy)return 1;return(a.latency_ms||9999)-(b.latency_ms||9999)});
+
 var html='';
-for(var i=0;i<countries.length;i++){
-var c=countries[i];
-if(filter&&c!==filter)continue;
-var items=groups[c];
-html+='<div class="country-group">';
-html+='<div class="country-header" onclick="toggleCountry(this)">';
-html+='<h3>'+c+' ('+items.length+')</h3>';
-html+='<span class="arrow">&#x25BC;</span></div>';
-html+='<div class="country-body">';
-for(var j=0;j<items.length;j++){
-html+=renderTunnelItem(items[j]);
-}
-html+='</div></div>';
+for(var i=0;i<filtered.length;i++){
+html+=renderTunnelItem(filtered[i]);
 }
 container.innerHTML=html;
 }
