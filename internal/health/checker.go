@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -286,54 +287,14 @@ func (c *Checker) deepCheckAll() {
 	log.Printf("[health] Gold pool updated: %d/%d backends pass HTTPS", len(gold), len(tuns))
 }
 
-// httpsProbe verifies a backend can complete a SOCKS5 CONNECT to port 443.
+// httpsProbe verifies a backend can complete a real HTTPS request.
 func (c *Checker) httpsProbe(port int) bool {
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	// Use exec curl for a real end-to-end HTTPS test
+	cmd := exec.Command("curl", "-s", "--proxy", fmt.Sprintf("socks5h://127.0.0.1:%d", port),
+		"--max-time", "8", "-o", "/dev/null", "-w", "%{http_code}", "https://example.com")
+	out, err := cmd.Output()
 	if err != nil {
 		return false
 	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(8 * time.Second))
-
-	// SOCKS5 greeting
-	conn.Write([]byte{0x05, 0x01, 0x00})
-	buf := make([]byte, 2)
-	if _, err := io.ReadFull(conn, buf); err != nil || buf[1] != 0x00 {
-		return false
-	}
-
-	// SOCKS5 CONNECT to example.com:443
-	host := "example.com"
-	req := []byte{0x05, 0x01, 0x00, 0x03, byte(len(host))}
-	req = append(req, []byte(host)...)
-	req = append(req, 0x01, 0xBB) // port 443 big-endian
-	conn.Write(req)
-
-	// Read SOCKS5 reply (at least 4 bytes)
-	reply := make([]byte, 4)
-	if _, err := io.ReadFull(conn, reply); err != nil {
-		return false
-	}
-	if reply[1] != 0x00 {
-		return false // connection failed
-	}
-
-	// Skip rest of SOCKS5 reply based on address type
-	switch reply[3] {
-	case 0x01: // IPv4
-		skip := make([]byte, 6) // 4 bytes IP + 2 bytes port
-		io.ReadFull(conn, skip)
-	case 0x03: // Domain
-		lenBuf := make([]byte, 1)
-		io.ReadFull(conn, lenBuf)
-		skip := make([]byte, int(lenBuf[0])+2)
-		io.ReadFull(conn, skip)
-	case 0x04: // IPv6
-		skip := make([]byte, 18) // 16 bytes IP + 2 bytes port
-		io.ReadFull(conn, skip)
-	}
-
-	// If we got here, SOCKS5 CONNECT to 443 succeeded = tunnel works for HTTPS
-	return true
+	return strings.TrimSpace(string(out)) == "200"
 }
