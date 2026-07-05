@@ -16,7 +16,7 @@ import (
 )
 
 // RegisterRoutes sets up all HTTP routes.
-func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker, dash *web.Dashboard, ps *proxy.Server, wgs *wgserver.Server) {
+func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker, dash *web.Dashboard, ps *proxy.Server, wgs *wgserver.Server, rc *wgserver.RoutingController) {
 	mux.HandleFunc("/api/tunnels", func(w http.ResponseWriter, r *http.Request) {
 		handleTunnels(w, r, tm)
 	})
@@ -45,6 +45,9 @@ func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker,
 		handleWGPeers(w, r, wgs)
 	})
 	mux.HandleFunc("/api/wg/peers/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/wg/routing", func(w http.ResponseWriter, r *http.Request) {
+		if rc != nil { handleRouting(w, r, rc) } else { writeJSON(w, http.StatusNotFound, map[string]string{"error": "routing not available"}) }
+	})
 		handleWGPeerAction(w, r, wgs)
 	})
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
@@ -411,4 +414,34 @@ func handleWGPeerAction(w http.ResponseWriter, r *http.Request, wgs *wgserver.Se
 	}
 
 	http.Error(w, "Not found", 404)
+}
+
+// handleRouting handles GET/POST /api/wg/routing
+func handleRouting(w http.ResponseWriter, r *http.Request, rc *wgserver.RoutingController) {
+	if r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, rc.GetStatus())
+		return
+	}
+	if r.Method == http.MethodPost {
+		var req struct {
+			Mode    string `json:"mode"`    // "direct" or "proxied"
+			Country string `json:"country"` // optional country code
+			Port    int    `json:"port"`    // optional specific wireproxy port
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+			return
+		}
+		mode := wgserver.ModeDirect
+		if req.Mode == "proxied" {
+			mode = wgserver.ModeProxied
+		}
+		if err := rc.SetMode(mode, req.Country, req.Port); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, rc.GetStatus())
+		return
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 }

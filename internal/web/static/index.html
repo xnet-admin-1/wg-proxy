@@ -572,5 +572,35 @@ loadWGPeers();
 setInterval(function(){loadWGStatus();loadWGPeers()},10000);
 addLog('Dashboard initialized');
 })();
+
+// --- Routing Mode ---
+function loadRouting(){
+fetch('/api/wg/routing').then(function(r){return r.json()}).then(function(d){
+document.getElementById('rt-mode').textContent=d.mode||'unknown';
+document.getElementById('rt-exit').textContent=d.exit_country||'all';
+document.getElementById('rt-port').textContent=d.proxy_port||'-';
+if(d.mode==='proxied'){
+document.getElementById('btnProxied').style.opacity='1';
+document.getElementById('btnDirect').style.opacity='0.5';
+}else{
+document.getElementById('btnDirect').style.opacity='1';
+document.getElementById('btnProxied').style.opacity='0.5';
+}
+}).catch(function(){});}
+
+function setRouting(mode){
+var country=document.getElementById('exitCountry').value;
+var port=0;
+addLog('Switching to <span style="color:#7c4dff">'+mode+'</span> mode'+(country?' ('+country+')':''));
+fetch('/api/wg/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode,country:country,port:port})})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error){addLog('<span style="color:#f44336">Error: '+d.error+'</span>')}
+else{addLog('<span style="color:#4caf50">Routing: '+d.mode+'</span>');loadRouting();}
+}).catch(function(e){addLog('<span style="color:#f44336">'+e.message+'</span>')});}
+
+function setRoutingCountry(){setRouting('proxied');}
+setInterval(loadRouting,10000);
+setTimeout(loadRouting,1000);
+
 </script>
 </body></html>
