@@ -2,25 +2,40 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/xnet-admin/wg-proxy/internal/health"
+	"github.com/xnet-admin/wg-proxy/internal/proxy"
 	"github.com/xnet-admin/wg-proxy/internal/tunnels"
 	"github.com/xnet-admin/wg-proxy/internal/web"
 )
 
 // RegisterRoutes sets up all HTTP routes.
-func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker, dash *web.Dashboard) {
+func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker, dash *web.Dashboard, ps *proxy.Server) {
 	mux.HandleFunc("/api/tunnels", func(w http.ResponseWriter, r *http.Request) {
 		handleTunnels(w, r, tm)
+	})
+	mux.HandleFunc("/api/tunnels/import", func(w http.ResponseWriter, r *http.Request) {
+		handleImport(w, r, tm)
+	})
+	mux.HandleFunc("/api/tunnels/import-url", func(w http.ResponseWriter, r *http.Request) {
+		handleImportURL(w, r, tm)
+	})
+	mux.HandleFunc("/api/tunnels/import-custom", func(w http.ResponseWriter, r *http.Request) {
+		handleImportCustom(w, r, tm)
 	})
 	mux.HandleFunc("/api/tunnels/", func(w http.ResponseWriter, r *http.Request) {
 		handleTunnelAction(w, r, tm)
 	})
 	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
 		handleStats(w, r, tm, hc)
+	})
+	mux.HandleFunc("/api/countries", func(w http.ResponseWriter, r *http.Request) {
+		handleCountries(w, r, ps)
 	})
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		dash.HandleSSE(w, r)
@@ -73,14 +88,30 @@ func handleTunnels(w http.ResponseWriter, r *http.Request, tm *tunnels.Manager) 
 }
 
 func handleTunnelAction(w http.ResponseWriter, r *http.Request, tm *tunnels.Manager) {
-	// Parse: /api/tunnels/{name}/restart
+	// Parse: /api/tunnels/{name}/action or /api/tunnels/{name}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tunnels/"), "/")
-	if len(parts) < 2 {
+	if len(parts) < 1 || parts[0] == "" {
 		http.Error(w, "Not found", 404)
 		return
 	}
 
 	name := parts[0]
+
+	// DELETE /api/tunnels/{name}
+	if r.Method == http.MethodDelete && len(parts) == 1 {
+		if err := tm.Delete(name); err != nil {
+			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "deleted", "name": name})
+		return
+	}
+
+	if len(parts) < 2 {
+		http.Error(w, "Not found", 404)
+		return
+	}
+
 	action := parts[1]
 
 	switch action {
@@ -94,6 +125,16 @@ func handleTunnelAction(w http.ResponseWriter, r *http.Request, tm *tunnels.Mana
 			return
 		}
 		writeJSON(w, 200, map[string]string{"status": "restarting", "name": name})
+	case "disconnect":
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+		if err := tm.Disconnect(name); err != nil {
+			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "disconnected", "name": name})
 	default:
 		http.Error(w, "Unknown action", 404)
 	}
@@ -131,4 +172,147 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+func handleImport(w http.ResponseWriter, r *http.Request, tm *tunnels.Manager) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", 405)
+		return
+	}
+
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "invalid multipart form"})
+		return
+	}
+
+	file, header, err := r.FormFile("config")
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": "missing 'config' file field"})
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": "failed to read file"})
+		return
+	}
+
+	name := strings.TrimSuffix(header.Filename, ".conf")
+	if name == "" {
+		writeJSON(w, 400, map[string]string{"error": "invalid filename"})
+		return
+	}
+
+	if err := tm.ImportConfig(name, content); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, map[string]string{"status": "imported", "name": name})
+}
+
+func handleImportURL(w http.ResponseWriter, r *http.Request, tm *tunnels.Manager) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", 405)
+		return
+	}
+
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+		writeJSON(w, 400, map[string]string{"error": "missing or invalid 'url' field"})
+		return
+	}
+
+	resp, err := http.Get(req.URL)
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": fmt.Sprintf("failed to download: %v", err)})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		writeJSON(w, 500, map[string]string{"error": fmt.Sprintf("download returned status %d", resp.StatusCode)})
+		return
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": "failed to read response body"})
+		return
+	}
+
+	// Extract name from URL path
+	urlParts := strings.Split(req.URL, "/")
+	filename := urlParts[len(urlParts)-1]
+	name := strings.TrimSuffix(filename, ".conf")
+	if name == "" {
+		name = "imported"
+	}
+
+	if err := tm.ImportConfig(name, content); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, map[string]string{"status": "imported", "name": name})
+}
+
+func handleImportCustom(w http.ResponseWriter, r *http.Request, tm *tunnels.Manager) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", 405)
+		return
+	}
+
+	var req struct {
+		Name               string `json:"name"`
+		PrivateKey         string `json:"private_key"`
+		Address            string `json:"address"`
+		DNS                string `json:"dns"`
+		PeerPubkey         string `json:"peer_pubkey"`
+		Endpoint           string `json:"endpoint"`
+		PersistentKeepalive int    `json:"persistent_keepalive"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+
+	if req.Name == "" || req.PrivateKey == "" || req.Address == "" || req.PeerPubkey == "" || req.Endpoint == "" {
+		writeJSON(w, 400, map[string]string{"error": "missing required fields"})
+		return
+	}
+
+	if req.PersistentKeepalive == 0 {
+		req.PersistentKeepalive = 25
+	}
+
+	conf := fmt.Sprintf(`[Interface]
+PrivateKey = %s
+Address = %s
+DNS = %s
+
+[Peer]
+PublicKey = %s
+Endpoint = %s
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = %d
+`, req.PrivateKey, req.Address, req.DNS, req.PeerPubkey, req.Endpoint, req.PersistentKeepalive)
+
+	if err := tm.ImportConfig(req.Name, []byte(conf)); err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, map[string]string{"status": "imported", "name": req.Name})
+}
+
+func handleCountries(w http.ResponseWriter, r *http.Request, ps *proxy.Server) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", 405)
+		return
+	}
+	writeJSON(w, 200, ps.GetCountryMapping())
 }

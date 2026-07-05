@@ -16,53 +16,96 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btn-primary{background:#7c4dff}
 .btn-danger{background:#c62828}
 .btn-success{background:#2e7d32}
+.btn-warning{background:#e65100}
+.btn-blue{background:#1565c0}
+.btn-sm{padding:5px 12px;font-size:11px}
 .container{padding:16px;max-width:1400px;margin:0 auto;display:grid;gap:16px}
 @media(min-width:1024px){.container{grid-template-columns:1fr 1fr;padding:24px}.card.full{grid-column:1/-1}}
 .card{background:#1e1e1e;border-radius:8px;padding:16px;border:1px solid #2a2a2a}
 .card-title{font-size:13px;color:#888;margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
 .stat-box{background:#252525;border-radius:8px;padding:12px;text-align:center}
-.stat-value{font-size:24px;font-weight:700;color:#7c4dff}
+.stat-value{font-size:22px;font-weight:700;color:#7c4dff;font-family:'JetBrains Mono',monospace}
 .stat-label{font-size:11px;color:#888;margin-top:4px;text-transform:uppercase}
 .tunnel-list{display:flex;flex-direction:column;gap:8px}
-.tunnel-item{background:#252525;border-radius:8px;padding:12px 16px;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:12px;border-left:3px solid #555;transition:border-color .3s}
+.tunnel-item{background:#252525;border-radius:8px;padding:12px 16px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;border-left:3px solid #555;transition:border-color .3s}
 .tunnel-item.healthy{border-left-color:#4caf50}
-.tunnel-item.unhealthy{border-left-color:#ff9800}
-.tunnel-item.error{border-left-color:#f44336}
+.tunnel-item.connecting{border-left-color:#ff9800}
+.tunnel-item.down,.tunnel-item.error{border-left-color:#f44336}
 .tunnel-item.stopped{border-left-color:#555}
 .tunnel-item.starting{border-left-color:#2196f3}
-.tunnel-status{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.tunnel-status.healthy{background:#4caf50}
-.tunnel-status.unhealthy{background:#ff9800}
-.tunnel-status.error{background:#f44336}
-.tunnel-status.stopped{background:#555}
-.tunnel-status.starting{background:#2196f3;animation:pulse 1s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.tunnel-info{display:flex;flex-direction:column;gap:2px}
-.tunnel-name{font-weight:600;color:#fff;font-size:14px}
-.tunnel-meta{font-size:11px;color:#888;display:flex;gap:12px;flex-wrap:wrap}
-.tunnel-stats{display:flex;gap:16px;font-size:12px;color:#aaa}
-.tunnel-stats span{display:flex;align-items:center;gap:4px}
-.tunnel-actions .btn{padding:5px 12px;font-size:11px}
-.traffic-bar{height:4px;background:#333;border-radius:2px;margin-top:4px;overflow:hidden}
-.traffic-bar-fill{height:100%;background:linear-gradient(90deg,#7c4dff,#448aff);border-radius:2px;transition:width .5s}
-.log-box{background:#0d0d0d;border-radius:8px;padding:8px;height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#aaa;scroll-behavior:smooth}
+.status-pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase}
+.status-pill.healthy{background:#1b5e20;color:#a5d6a7}
+.status-pill.connecting{background:#e65100;color:#ffcc80}
+.status-pill.down,.status-pill.error{background:#b71c1c;color:#ef9a9a}
+.status-pill.stopped{background:#333;color:#888}
+.status-pill.starting{background:#0d47a1;color:#90caf9}
+.tunnel-info{display:flex;flex-direction:column;gap:4px}
+.tunnel-name{font-weight:600;color:#fff;font-size:14px;display:flex;align-items:center;gap:8px}
+.tunnel-meta{font-size:11px;color:#888;display:flex;gap:12px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace}
+.tunnel-actions{display:flex;gap:6px;flex-wrap:wrap}
+.country-group{margin-bottom:12px}
+.country-header{background:#1a1a1a;border-radius:8px;padding:10px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border:1px solid #2a2a2a;user-select:none}
+.country-header:hover{background:#222}
+.country-header h3{font-size:14px;color:#fff;font-weight:600}
+.country-header .count{font-size:12px;color:#7c4dff;font-family:'JetBrains Mono',monospace}
+.country-header .arrow{color:#888;transition:transform .2s}
+.country-header.collapsed .arrow{transform:rotate(-90deg)}
+.country-body{display:flex;flex-direction:column;gap:8px;padding-left:8px}
+.country-body.hidden{display:none}
+.filter-select{background:#252525;color:#e0e0e0;border:1px solid #333;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}
+.filter-select:focus{outline:none;border-color:#7c4dff}
+.ports-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.port-item{background:#252525;border-radius:6px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center}
+.port-item .country{font-size:13px;font-weight:500}
+.port-item .port{font-family:'JetBrains Mono',monospace;color:#7c4dff;font-size:13px}
+.log-box{background:#0d0d0d;border-radius:8px;padding:8px;height:180px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#aaa;scroll-behavior:smooth}
 .log-box::-webkit-scrollbar{width:6px}
 .log-box::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
 .log-box div{padding:2px 4px;border-bottom:1px solid #1a1a1a}
 .log-box .ts{color:#555;margin-right:8px}
 .empty-state{text-align:center;padding:40px;color:#666}
 .empty-state .icon{font-size:48px;margin-bottom:12px}
-.empty-state p{font-size:13px}
 .connection-indicator{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
 .connection-indicator.connected{background:#4caf50}
 .connection-indicator.disconnected{background:#f44336}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.status-pill.starting{animation:pulse 1s infinite}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;justify-content:center;align-items:center}
+.modal-overlay.active{display:flex}
+.modal{background:#1e1e1e;border-radius:12px;border:1px solid #333;width:90%;max-width:560px;max-height:90vh;overflow-y:auto;padding:24px}
+.modal h2{font-size:16px;color:#fff;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+.modal h2 .close-btn{background:none;border:none;color:#888;font-size:20px;cursor:pointer}
+.modal h2 .close-btn:hover{color:#fff}
+.tabs{display:flex;gap:4px;margin-bottom:16px}
+.tab-btn{padding:8px 16px;border-radius:6px;border:1px solid #333;background:#252525;color:#aaa;cursor:pointer;font-size:12px;font-weight:500}
+.tab-btn.active{background:#7c4dff;color:#fff;border-color:#7c4dff}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:12px;color:#888;margin-bottom:4px;text-transform:uppercase}
+.form-group input{width:100%;background:#252525;border:1px solid #333;border-radius:6px;padding:10px 12px;color:#e0e0e0;font-size:13px}
+.form-group input:focus{outline:none;border-color:#7c4dff}
+.drop-zone{border:2px dashed #444;border-radius:8px;padding:32px;text-align:center;color:#666;cursor:pointer;transition:border-color .2s}
+.drop-zone.dragover{border-color:#7c4dff;color:#aaa}
+.drop-zone p{margin-bottom:8px}
+@media(max-width:768px){
+.tunnel-item{grid-template-columns:1fr;gap:8px}
+.tunnel-actions{justify-content:flex-start}
+.stats-grid{grid-template-columns:repeat(2,1fr)}
+.top-bar{flex-direction:column;align-items:flex-start}
+}
 </style>
 </head>
 <body>
 <div class="top-bar">
 <h1>WG-Proxy <span class="badge">GATEWAY</span></h1>
 <div class="top-controls">
+<button class="btn btn-primary" onclick="openImportModal()">+ Import</button>
+<select class="filter-select" id="countryFilter" onchange="applyFilter()">
+<option value="">All Countries</option>
+</select>
 <span id="sseStatus"><span class="connection-indicator disconnected"></span>Connecting...</span>
 </div>
 </div>
@@ -71,25 +114,62 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="card full">
 <div class="card-title">Overview</div>
 <div class="stats-grid">
-<div class="stat-box"><div class="stat-value" id="st-healthy">0</div><div class="stat-label">Healthy</div></div>
 <div class="stat-box"><div class="stat-value" id="st-total">0</div><div class="stat-label">Total Tunnels</div></div>
-<div class="stat-box"><div class="stat-value" id="st-latency">-</div><div class="stat-label">Avg Latency</div></div>
+<div class="stat-box"><div class="stat-value" id="st-healthy">0</div><div class="stat-label">Healthy</div></div>
 <div class="stat-box"><div class="stat-value" id="st-conns">0</div><div class="stat-label">Connections</div></div>
-<div class="stat-box"><div class="stat-value" id="st-in">0</div><div class="stat-label">Traffic In</div></div>
-<div class="stat-box"><div class="stat-value" id="st-out">0</div><div class="stat-label">Traffic Out</div></div>
+<div class="stat-box"><div class="stat-value" id="st-traffic">0</div><div class="stat-label">Total Traffic</div></div>
+<div class="stat-box"><div class="stat-value" id="st-latency">-</div><div class="stat-label">Avg Latency</div></div>
 </div>
+</div>
+
+<div class="card full" id="portsCard" style="display:none">
+<div class="card-title">Country Proxy Ports</div>
+<div class="ports-grid" id="portsList"></div>
 </div>
 
 <div class="card full">
 <div class="card-title">Tunnels <span id="tunnelCount" style="color:#7c4dff"></span></div>
-<div class="tunnel-list" id="tunnelList">
-<div class="empty-state"><div class="icon">&#x1F50C;</div><p>No tunnels loaded. Place .conf files in the config directory.</p></div>
+<div id="tunnelContainer">
+<div class="empty-state"><div class="icon">&#x1F50C;</div><p>No tunnels loaded.</p></div>
 </div>
 </div>
 
 <div class="card full">
-<div class="card-title">Activity Log <button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('logBox').innerHTML=''">Clear</button></div>
+<div class="card-title">Activity Log <button class="btn btn-danger btn-sm" onclick="document.getElementById('logBox').innerHTML=''">Clear</button></div>
 <div class="log-box" id="logBox"></div>
+</div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-overlay" id="importModal">
+<div class="modal">
+<h2>Import Tunnel <button class="close-btn" onclick="closeImportModal()">&times;</button></h2>
+<div class="tabs">
+<button class="tab-btn active" onclick="switchTab('file')">File</button>
+<button class="tab-btn" onclick="switchTab('url')">URL</button>
+<button class="tab-btn" onclick="switchTab('custom')">Custom</button>
+</div>
+<div class="tab-panel active" id="tab-file">
+<div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+<p>&#x1F4C1; Drag &amp; drop .conf files here</p>
+<p style="font-size:12px">or click to browse</p>
+</div>
+<input type="file" id="fileInput" accept=".conf" multiple style="display:none" onchange="handleFileSelect(this.files)">
+<div id="fileStatus" style="margin-top:8px;font-size:12px;color:#888"></div>
+</div>
+<div class="tab-panel" id="tab-url">
+<div class="form-group"><label>Config URL</label><input type="text" id="importUrl" placeholder="https://example.com/tunnel.conf"></div>
+<button class="btn btn-primary" onclick="importFromUrl()" style="width:100%">Import from URL</button>
+</div>
+<div class="tab-panel" id="tab-custom">
+<div class="form-group"><label>Name</label><input type="text" id="cName" placeholder="my-tunnel"></div>
+<div class="form-group"><label>Private Key</label><input type="text" id="cPrivateKey" placeholder="Base64 private key"></div>
+<div class="form-group"><label>Address</label><input type="text" id="cAddress" placeholder="10.0.0.2/32"></div>
+<div class="form-group"><label>DNS</label><input type="text" id="cDNS" placeholder="1.1.1.1"></div>
+<div class="form-group"><label>Peer Public Key</label><input type="text" id="cPeerKey" placeholder="Base64 public key"></div>
+<div class="form-group"><label>Endpoint</label><input type="text" id="cEndpoint" placeholder="vpn.example.com:51820"></div>
+<button class="btn btn-primary" onclick="importCustom()" style="width:100%">Create Tunnel</button>
+</div>
 </div>
 </div>
 
@@ -98,9 +178,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 var logBox=document.getElementById('logBox');
 var evtSource=null;
 var reconnectTimer=null;
+var currentData={tunnels:[]};
 
 function formatBytes(b){
-if(b===0)return '0 B';
+if(!b||b===0)return '0 B';
 var units=['B','KB','MB','GB','TB'];
 var i=Math.floor(Math.log(b)/Math.log(1024));
 if(i>=units.length)i=units.length-1;
@@ -113,56 +194,125 @@ var now=new Date();
 var ts=now.toTimeString().split(' ')[0];
 d.innerHTML='<span class="ts">'+ts+'</span>'+msg;
 logBox.appendChild(d);
-if(logBox.children.length>200){logBox.removeChild(logBox.firstChild)}
+if(logBox.children.length>200)logBox.removeChild(logBox.firstChild);
 logBox.scrollTop=logBox.scrollHeight;
 }
 
-function updateUI(data){
-document.getElementById('st-healthy').textContent=data.healthy_count||0;
-document.getElementById('st-total').textContent=data.total_count||0;
-document.getElementById('st-latency').textContent=data.avg_latency_ms>0?data.avg_latency_ms+'ms':'-';
-document.getElementById('st-conns').textContent=data.total_conns||0;
-document.getElementById('st-in').textContent=formatBytes(data.total_bytes_in||0);
-document.getElementById('st-out').textContent=formatBytes(data.total_bytes_out||0);
+function statusClass(s){
+if(s==='healthy')return 'healthy';
+if(s==='connecting'||s==='unhealthy'||s==='starting')return 'connecting';
+if(s==='down'||s==='error')return 'down';
+return 'stopped';
+}
 
-var list=document.getElementById('tunnelList');
+function renderTunnelItem(t){
+var sc=statusClass(t.status);
+var html='<div class="tunnel-item '+sc+'">';
+html+='<div class="tunnel-info">';
+html+='<div class="tunnel-name">'+t.name+' <span class="status-pill '+sc+'">'+t.status+'</span></div>';
+html+='<div class="tunnel-meta">';
+if(t.exit_ip)html+='<span>IP: '+t.exit_ip+'</span>';
+if(t.latency_ms>0)html+='<span>Latency: '+t.latency_ms+'ms</span>';
+html+='<span>&#x2B07; '+formatBytes(t.bytes_in)+'</span>';
+html+='<span>&#x2B06; '+formatBytes(t.bytes_out)+'</span>';
+html+='<span>&#x1F517; '+(t.conn_count||0)+'</span>';
+if(t.port)html+='<span>Port: '+t.port+'</span>';
+html+='</div></div>';
+html+='<div class="tunnel-actions">';
+html+='<button class="btn btn-blue btn-sm" onclick="restartTunnel(\''+t.name+'\')">Restart</button>';
+html+='<button class="btn btn-warning btn-sm" onclick="disconnectTunnel(\''+t.name+'\')">Disconnect</button>';
+html+='<button class="btn btn-danger btn-sm" onclick="deleteTunnel(\''+t.name+'\')">Delete</button>';
+html+='</div></div>';
+return html;
+}
+
+function groupByCountry(tunnels){
+var groups={};
+for(var i=0;i<tunnels.length;i++){
+var t=tunnels[i];
+var country=t.country||'Unknown';
+if(!groups[country])groups[country]=[];
+groups[country].push(t);
+}
+return groups;
+}
+
+function applyFilter(){
+renderTunnels(currentData);
+}
+
+function renderTunnels(data){
 var tunnels=data.tunnels||[];
+var filter=document.getElementById('countryFilter').value;
+var container=document.getElementById('tunnelContainer');
 document.getElementById('tunnelCount').textContent=tunnels.length>0?tunnels.length+' configured':'';
 
 if(tunnels.length===0){
-list.innerHTML='<div class="empty-state"><div class="icon">&#x1F50C;</div><p>No tunnels loaded. Place .conf files in the config directory.</p></div>';
+container.innerHTML='<div class="empty-state"><div class="icon">&#x1F50C;</div><p>No tunnels loaded. Import configs to get started.</p></div>';
 return;
 }
 
+var groups=groupByCountry(tunnels);
+var countries=Object.keys(groups).sort();
+
+// Update country filter options
+var sel=document.getElementById('countryFilter');
+var currentVal=sel.value;
+var opts='<option value="">All Countries</option>';
+for(var i=0;i<countries.length;i++){
+opts+='<option value="'+countries[i]+'">'+countries[i]+' ('+groups[countries[i]].length+')</option>';
+}
+sel.innerHTML=opts;
+sel.value=currentVal||filter;
+
 var html='';
-for(var i=0;i<tunnels.length;i++){
-var t=tunnels[i];
-var cls=t.status;
-html+='<div class="tunnel-item '+cls+'">';
-html+='<div class="tunnel-status '+cls+'"></div>';
-html+='<div class="tunnel-info">';
-html+='<div class="tunnel-name">'+t.name+'</div>';
-html+='<div class="tunnel-meta">';
-html+='<span>Port: '+t.port+'</span>';
-html+='<span>Status: '+t.status+'</span>';
-if(t.latency_ms>0)html+='<span>Latency: '+t.latency_ms+'ms</span>';
-if(t.uptime)html+='<span>Uptime: '+t.uptime+'</span>';
-if(t.error)html+='<span style="color:#f44336">'+t.error+'</span>';
-html+='</div></div>';
-html+='<div class="tunnel-stats">';
-html+='<span>&#x2B07; '+formatBytes(t.bytes_in)+'</span>';
-html+='<span>&#x2B06; '+formatBytes(t.bytes_out)+'</span>';
-html+='<span>&#x1F517; '+t.conn_count+'</span>';
-html+='</div>';
-html+='<div class="tunnel-actions">';
-html+='<button class="btn btn-primary" onclick="restartTunnel(\''+t.name+'\')">Restart</button>';
+for(var i=0;i<countries.length;i++){
+var c=countries[i];
+if(filter&&c!==filter)continue;
+var items=groups[c];
+html+='<div class="country-group">';
+html+='<div class="country-header" onclick="toggleCountry(this)">';
+html+='<h3>'+c+' ('+items.length+')</h3>';
+html+='<span class="arrow">&#x25BC;</span></div>';
+html+='<div class="country-body">';
+for(var j=0;j<items.length;j++){
+html+=renderTunnelItem(items[j]);
+}
 html+='</div></div>';
 }
-list.innerHTML=html;
+container.innerHTML=html;
+}
+
+function updateUI(data){
+currentData=data;
+document.getElementById('st-total').textContent=data.total_count||0;
+document.getElementById('st-healthy').textContent=data.healthy_count||0;
+document.getElementById('st-conns').textContent=data.total_conns||0;
+var totalTraffic=(data.total_bytes_in||0)+(data.total_bytes_out||0);
+document.getElementById('st-traffic').textContent=formatBytes(totalTraffic);
+document.getElementById('st-latency').textContent=data.avg_latency_ms>0?data.avg_latency_ms+'ms':'-';
+renderTunnels(data);
+}
+
+function loadCountryPorts(){
+fetch('/api/countries').then(function(r){return r.json()}).then(function(data){
+var ports=data.ports||data||[];
+if(!Array.isArray(ports)&&typeof ports==='object'){
+ports=Object.keys(ports).map(function(k){return{country:k,port:ports[k]}});
+}
+if(ports.length===0){document.getElementById('portsCard').style.display='none';return;}
+document.getElementById('portsCard').style.display='';
+var html='';
+for(var i=0;i<ports.length;i++){
+var p=ports[i];
+html+='<div class="port-item"><span class="country">'+p.country+'</span><span class="port">:'+p.port+'</span></div>';
+}
+document.getElementById('portsList').innerHTML=html;
+}).catch(function(){});
 }
 
 function connect(){
-if(evtSource){evtSource.close()}
+if(evtSource)evtSource.close();
 evtSource=new EventSource('/api/events');
 evtSource.onopen=function(){
 document.getElementById('sseStatus').innerHTML='<span class="connection-indicator connected"></span>Connected';
@@ -173,26 +323,114 @@ try{var data=JSON.parse(e.data);updateUI(data)}catch(err){}
 };
 evtSource.onerror=function(){
 document.getElementById('sseStatus').innerHTML='<span class="connection-indicator disconnected"></span>Disconnected';
-evtSource.close();
-evtSource=null;
+evtSource.close();evtSource=null;
 if(reconnectTimer)clearTimeout(reconnectTimer);
 reconnectTimer=setTimeout(connect,3000);
 addLog('<span style="color:#f44336">SSE disconnected, reconnecting...</span>');
 };
 }
 
+// Tunnel actions
 window.restartTunnel=function(name){
-addLog('Restarting tunnel: <span style="color:#7c4dff">'+name+'</span>');
-fetch('/api/tunnels/'+name+'/restart',{method:'POST'})
-.then(function(r){return r.json()})
-.then(function(d){
+addLog('Restarting: <span style="color:#7c4dff">'+name+'</span>');
+fetch('/api/tunnels/'+encodeURIComponent(name)+'/restart',{method:'POST'})
+.then(function(r){return r.json()}).then(function(d){
 if(d.error)addLog('<span style="color:#f44336">Error: '+d.error+'</span>');
 else addLog('<span style="color:#4caf50">'+name+' restart initiated</span>');
-})
-.catch(function(e){addLog('<span style="color:#f44336">Request failed: '+e.message+'</span>')});
+}).catch(function(e){addLog('<span style="color:#f44336">Failed: '+e.message+'</span>')});
 };
 
+window.disconnectTunnel=function(name){
+addLog('Disconnecting: <span style="color:#ff9800">'+name+'</span>');
+fetch('/api/tunnels/'+encodeURIComponent(name)+'/disconnect',{method:'POST'})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error)addLog('<span style="color:#f44336">Error: '+d.error+'</span>');
+else addLog('<span style="color:#4caf50">'+name+' disconnected</span>');
+}).catch(function(e){addLog('<span style="color:#f44336">Failed: '+e.message+'</span>')});
+};
+
+window.deleteTunnel=function(name){
+if(!confirm('Delete tunnel "'+name+'"? This cannot be undone.'))return;
+addLog('Deleting: <span style="color:#f44336">'+name+'</span>');
+fetch('/api/tunnels/'+encodeURIComponent(name),{method:'DELETE'})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error)addLog('<span style="color:#f44336">Error: '+d.error+'</span>');
+else addLog('<span style="color:#4caf50">'+name+' deleted</span>');
+}).catch(function(e){addLog('<span style="color:#f44336">Failed: '+e.message+'</span>')});
+};
+
+window.toggleCountry=function(el){
+el.classList.toggle('collapsed');
+var body=el.nextElementSibling;
+body.classList.toggle('hidden');
+};
+
+// Import modal
+window.openImportModal=function(){document.getElementById('importModal').classList.add('active')};
+window.closeImportModal=function(){document.getElementById('importModal').classList.remove('active')};
+
+window.switchTab=function(tab){
+document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
+document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active')});
+document.getElementById('tab-'+tab).classList.add('active');
+event.target.classList.add('active');
+};
+
+// File import
+var dropZone=document.getElementById('dropZone');
+dropZone.addEventListener('dragover',function(e){e.preventDefault();this.classList.add('dragover')});
+dropZone.addEventListener('dragleave',function(){this.classList.remove('dragover')});
+dropZone.addEventListener('drop',function(e){
+e.preventDefault();this.classList.remove('dragover');
+handleFileSelect(e.dataTransfer.files);
+});
+
+window.handleFileSelect=function(files){
+if(!files||files.length===0)return;
+var fd=new FormData();
+for(var i=0;i<files.length;i++)fd.append('configs',files[i]);
+document.getElementById('fileStatus').textContent='Uploading '+files.length+' file(s)...';
+fetch('/api/tunnels/import',{method:'POST',body:fd})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error){document.getElementById('fileStatus').textContent='Error: '+d.error;addLog('<span style="color:#f44336">Import error: '+d.error+'</span>')}
+else{document.getElementById('fileStatus').textContent='Imported successfully!';addLog('<span style="color:#4caf50">File import complete</span>');closeImportModal()}
+}).catch(function(e){document.getElementById('fileStatus').textContent='Failed: '+e.message});
+};
+
+window.importFromUrl=function(){
+var url=document.getElementById('importUrl').value.trim();
+if(!url)return;
+fetch('/api/tunnels/import-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error)addLog('<span style="color:#f44336">URL import error: '+d.error+'</span>');
+else{addLog('<span style="color:#4caf50">Imported from URL</span>');closeImportModal()}
+}).catch(function(e){addLog('<span style="color:#f44336">Failed: '+e.message+'</span>')});
+};
+
+window.importCustom=function(){
+var body={
+name:document.getElementById('cName').value.trim(),
+private_key:document.getElementById('cPrivateKey').value.trim(),
+address:document.getElementById('cAddress').value.trim(),
+dns:document.getElementById('cDNS').value.trim(),
+peer_public_key:document.getElementById('cPeerKey').value.trim(),
+endpoint:document.getElementById('cEndpoint').value.trim()
+};
+if(!body.name||!body.private_key||!body.endpoint){addLog('<span style="color:#f44336">Name, Private Key, and Endpoint are required</span>');return}
+fetch('/api/tunnels/import-custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+.then(function(r){return r.json()}).then(function(d){
+if(d.error)addLog('<span style="color:#f44336">Custom import error: '+d.error+'</span>');
+else{addLog('<span style="color:#4caf50">Custom tunnel created: '+body.name+'</span>');closeImportModal()}
+}).catch(function(e){addLog('<span style="color:#f44336">Failed: '+e.message+'</span>')});
+};
+
+// Close modal on overlay click
+document.getElementById('importModal').addEventListener('click',function(e){
+if(e.target===this)closeImportModal();
+});
+
 connect();
+loadCountryPorts();
 addLog('Dashboard initialized');
 })();
 </script>

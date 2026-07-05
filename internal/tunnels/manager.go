@@ -23,6 +23,7 @@ const (
 	StatusRunning
 	StatusUnhealthy
 	StatusError
+	StatusDisconnected
 )
 
 func (s TunnelStatus) String() string {
@@ -37,6 +38,8 @@ func (s TunnelStatus) String() string {
 		return "unhealthy"
 	case StatusError:
 		return "error"
+	case StatusDisconnected:
+		return "disconnected"
 	default:
 		return "unknown"
 	}
@@ -52,6 +55,8 @@ type Tunnel struct {
 	LastCheck  time.Time
 	StartedAt  time.Time
 	Error      string
+	Country    string
+	ExitIP     string
 	BytesIn    atomic.Int64
 	BytesOut   atomic.Int64
 	ConnCount  atomic.Int64
@@ -115,6 +120,7 @@ func (m *Manager) LoadConfigs() error {
 			ConfigPath: confPath,
 			ProxyPort:  m.nextPort,
 			Status:     StatusStopped,
+			Country:    extractCountryFromName(name),
 		}
 		m.tunnels = append(m.tunnels, tunnel)
 		m.nextPort++
@@ -315,4 +321,85 @@ func (m *Manager) monitorOutput(t *Tunnel, stdout, stderr io.ReadCloser) {
 			log.Printf("[wireproxy/%s] ERR: %s", t.Name, scanner.Text())
 		}
 	}()
+}
+
+// Disconnect stops the wireproxy process but keeps the .conf file.
+func (m *Manager) Disconnect(name string) error {
+	t := m.GetTunnel(name)
+	if t == nil {
+		return fmt.Errorf("tunnel %q not found", name)
+	}
+	m.stopTunnel(t)
+	t.mu.Lock()
+	t.Status = StatusDisconnected
+	t.mu.Unlock()
+	log.Printf("[tunnels] %s: disconnected", name)
+	return nil
+}
+
+// Delete stops the wireproxy process and removes the .conf file.
+func (m *Manager) Delete(name string) error {
+	t := m.GetTunnel(name)
+	if t == nil {
+		return fmt.Errorf("tunnel %q not found", name)
+	}
+	m.stopTunnel(t)
+
+	// Remove the config file
+	if err := os.Remove(t.ConfigPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing config file: %w", err)
+	}
+
+	// Remove from tunnels list
+	m.mu.Lock()
+	for i, tun := range m.tunnels {
+		if tun.Name == name {
+			m.tunnels = append(m.tunnels[:i], m.tunnels[i+1:]...)
+			break
+		}
+	}
+	m.mu.Unlock()
+
+	log.Printf("[tunnels] %s: deleted", name)
+	return nil
+}
+
+// ImportConfig writes a new .conf file to the config directory and starts a tunnel for it.
+func (m *Manager) ImportConfig(name string, confContent []byte) error {
+	confPath := filepath.Join(m.configDir, name+".conf")
+
+	if err := os.WriteFile(confPath, confContent, 0600); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+
+	m.mu.Lock()
+	tunnel := &Tunnel{
+		Name:       name,
+		ConfigPath: confPath,
+		ProxyPort:  m.nextPort,
+		Status:     StatusStopped,
+		Country:    extractCountryFromName(name),
+	}
+	m.tunnels = append(m.tunnels, tunnel)
+	m.nextPort++
+	m.mu.Unlock()
+
+	go m.startTunnel(tunnel)
+	log.Printf("[tunnels] %s: imported and starting (port %d)", name, tunnel.ProxyPort)
+	return nil
+}
+
+// ConfigDir returns the configuration directory path.
+func (m *Manager) ConfigDir() string {
+	return m.configDir
+}
+
+// extractCountryFromName attempts to extract a 2-letter country code from the tunnel name.
+// It looks for patterns like "us-east", "de-west", etc.
+func extractCountryFromName(name string) string {
+	parts := strings.SplitN(name, "-", 2)
+	if len(parts) >= 1 && len(parts[0]) == 2 {
+		return strings.ToUpper(parts[0])
+	}
+	return ""
 }

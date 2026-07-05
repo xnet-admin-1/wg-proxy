@@ -2,13 +2,27 @@ package health
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/xnet-admin/wg-proxy/internal/tunnels"
 )
+
+// TunnelHealth holds per-tunnel health status including traffic stats.
+type TunnelHealth struct {
+	Name       string        `json:"name"`
+	Status     string        `json:"status"`
+	Latency    time.Duration `json:"latency"`
+	BytesIn    int64         `json:"bytes_in"`
+	BytesOut   int64         `json:"bytes_out"`
+	TotalConns int64         `json:"total_conns"`
+	ExitIP     string        `json:"exit_ip,omitempty"`
+}
 
 // Stats holds aggregate health statistics.
 type Stats struct {
@@ -28,6 +42,8 @@ type Checker struct {
 	wg       sync.WaitGroup
 	mu       sync.RWMutex
 	stats    Stats
+	exitIPs  map[string]string // tunnel name -> exit IP
+	ipMu     sync.RWMutex
 }
 
 // NewChecker creates a new health checker.
@@ -37,6 +53,7 @@ func NewChecker(manager *tunnels.Manager, interval, timeout time.Duration) *Chec
 		interval: interval,
 		timeout:  timeout,
 		stopCh:   make(chan struct{}),
+		exitIPs:  make(map[string]string),
 	}
 }
 
@@ -59,6 +76,22 @@ func (c *Checker) GetStats() Stats {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.stats
+}
+
+// GetTunnelHealth returns per-tunnel health information.
+func (c *Checker) GetTunnelHealth(t *tunnels.Tunnel) TunnelHealth {
+	t.RLock()
+	th := TunnelHealth{
+		Name:       t.Name,
+		Status:     t.Status.String(),
+		Latency:    t.Latency,
+		BytesIn:    t.BytesIn.Load(),
+		BytesOut:   t.BytesOut.Load(),
+		TotalConns: t.ConnCount.Load(),
+		ExitIP:     t.ExitIP,
+	}
+	t.RUnlock()
+	return th
 }
 
 func (c *Checker) loop() {
@@ -88,7 +121,7 @@ func (c *Checker) checkAll() {
 		status := t.Status
 		t.RUnlock()
 
-		if status == tunnels.StatusStopped || status == tunnels.StatusError {
+		if status == tunnels.StatusStopped || status == tunnels.StatusError || status == tunnels.StatusDisconnected {
 			continue
 		}
 
@@ -106,6 +139,11 @@ func (c *Checker) checkAll() {
 			t.Latency = latency
 			healthyCount++
 			totalLatency += latency
+
+			// Resolve exit IP on first successful check
+			if t.ExitIP == "" {
+				go c.resolveExitIP(t)
+			}
 		}
 		t.Unlock()
 	}
@@ -134,4 +172,57 @@ func (c *Checker) checkTunnel(t *tunnels.Tunnel) (time.Duration, error) {
 	}
 	conn.Close()
 	return time.Since(start), nil
+}
+
+// resolveExitIP performs a request through the tunnel's SOCKS5 proxy to determine its exit IP.
+func (c *Checker) resolveExitIP(t *tunnels.Tunnel) {
+	addr := fmt.Sprintf("127.0.0.1:%d", t.ProxyPort)
+
+	transport := &http.Transport{
+		Dial: func(network, a string) (net.Conn, error) {
+			// Connect to the SOCKS5 proxy
+			proxyConn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			// SOCKS5 handshake
+			proxyConn.Write([]byte{0x05, 0x01, 0x00})
+			buf := make([]byte, 2)
+			proxyConn.Read(buf)
+
+			// CONNECT to ifconfig.me:80
+			host := "ifconfig.me"
+			req := []byte{0x05, 0x01, 0x00, 0x03, byte(len(host))}
+			req = append(req, []byte(host)...)
+			req = append(req, 0x00, 0x50) // port 80
+			proxyConn.Write(req)
+
+			resp := make([]byte, 256)
+			proxyConn.Read(resp)
+			if len(resp) >= 2 && resp[1] != 0x00 {
+				proxyConn.Close()
+				return nil, fmt.Errorf("SOCKS5 connect failed")
+			}
+			return proxyConn, nil
+		},
+	}
+
+	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
+	resp, err := client.Get("http://ifconfig.me/ip")
+	if err != nil {
+		log.Printf("[health] %s: failed to resolve exit IP: %v", t.Name, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+
+	ip := strings.TrimSpace(string(body))
+	t.Lock()
+	t.ExitIP = ip
+	t.Unlock()
+	log.Printf("[health] %s: exit IP resolved to %s", t.Name, ip)
 }

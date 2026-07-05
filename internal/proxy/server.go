@@ -9,24 +9,32 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/xnet-admin/wg-proxy/internal/config"
 	"github.com/xnet-admin/wg-proxy/internal/tunnels"
 )
 
 // Server is a SOCKS5 proxy that load-balances across healthy tunnel backends.
 type Server struct {
 	manager  *tunnels.Manager
+	cfg      *config.Config
 	addr     string
 	listener net.Listener
 	closed   atomic.Bool
 	mu       sync.Mutex
 	counter  uint64
+
+	countryMu       sync.RWMutex
+	countryMapping  map[string]int // country code -> port
+	countryListeners []net.Listener
 }
 
 // NewServer creates a new SOCKS5 proxy server.
-func NewServer(manager *tunnels.Manager, addr string) *Server {
+func NewServer(manager *tunnels.Manager, addr string, cfg *config.Config) *Server {
 	return &Server{
-		manager: manager,
-		addr:    addr,
+		manager:        manager,
+		addr:           addr,
+		cfg:            cfg,
+		countryMapping: make(map[string]int),
 	}
 }
 
@@ -47,7 +55,7 @@ func (s *Server) ListenAndServe() error {
 			log.Printf("[proxy] Accept error: %v", err)
 			continue
 		}
-		go s.handleConnection(conn)
+		go s.handleConnection(conn, nil)
 	}
 }
 
@@ -57,9 +65,98 @@ func (s *Server) Close() {
 	if s.listener != nil {
 		s.listener.Close()
 	}
+	s.countryMu.RLock()
+	for _, ln := range s.countryListeners {
+		ln.Close()
+	}
+	s.countryMu.RUnlock()
 }
 
-func (s *Server) handleConnection(clientConn net.Conn) {
+// GetCountryMapping returns the current country-to-port mapping.
+func (s *Server) GetCountryMapping() map[string]int {
+	s.countryMu.RLock()
+	defer s.countryMu.RUnlock()
+	result := make(map[string]int, len(s.countryMapping))
+	for k, v := range s.countryMapping {
+		result[k] = v
+	}
+	return result
+}
+
+// StartCountryProxies groups tunnels by country code and starts a SOCKS5 listener per country.
+func (s *Server) StartCountryProxies() {
+	tuns := s.manager.GetTunnels()
+	countries := make(map[string][]*tunnels.Tunnel)
+	for _, t := range tuns {
+		t.RLock()
+		country := t.Country
+		t.RUnlock()
+		if country != "" {
+			countries[country] = append(countries[country], t)
+		}
+	}
+
+	port := s.cfg.CountryPortBase
+	s.countryMu.Lock()
+	for country, countryTunnels := range countries {
+		s.countryMapping[country] = port
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			log.Printf("[proxy] Failed to start country proxy for %s on port %d: %v", country, port, err)
+			port++
+			continue
+		}
+		s.countryListeners = append(s.countryListeners, ln)
+		log.Printf("[proxy] Country %s proxy listening on :%d (%d tunnels)", country, port, len(countryTunnels))
+
+		go s.serveCountryProxy(ln, countryTunnels)
+		port++
+	}
+	s.countryMu.Unlock()
+}
+
+func (s *Server) serveCountryProxy(ln net.Listener, countryTunnels []*tunnels.Tunnel) {
+	var counter uint64
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if s.closed.Load() {
+				return
+			}
+			continue
+		}
+		go s.handleConnection(conn, &countryBackendPicker{
+			tunnels: countryTunnels,
+			counter: &counter,
+		})
+	}
+}
+
+type countryBackendPicker struct {
+	tunnels []*tunnels.Tunnel
+	counter *uint64
+	mu      sync.Mutex
+}
+
+func (p *countryBackendPicker) pick() (string, *tunnels.Tunnel) {
+	var healthy []*tunnels.Tunnel
+	for _, t := range p.tunnels {
+		if t.IsHealthy() {
+			healthy = append(healthy, t)
+		}
+	}
+	if len(healthy) == 0 {
+		return "", nil
+	}
+	p.mu.Lock()
+	idx := *p.counter % uint64(len(healthy))
+	*p.counter++
+	p.mu.Unlock()
+	t := healthy[idx]
+	return fmt.Sprintf("127.0.0.1:%d", t.ProxyPort), t
+}
+
+func (s *Server) handleConnection(clientConn net.Conn, picker *countryBackendPicker) {
 	defer clientConn.Close()
 
 	// SOCKS5 greeting
@@ -69,8 +166,40 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// Respond: no auth required
-	clientConn.Write([]byte{0x05, 0x00})
+	// Check if authentication is required
+	if s.cfg.ProxyUser != "" && s.cfg.ProxyPass != "" {
+		// Require username/password auth (RFC 1929)
+		clientConn.Write([]byte{0x05, 0x02}) // method: username/password
+
+		// Read auth request
+		n, err = clientConn.Read(buf)
+		if err != nil || n < 5 || buf[0] != 0x01 {
+			clientConn.Write([]byte{0x01, 0x01}) // auth failure
+			return
+		}
+
+		ulen := int(buf[1])
+		if n < 2+ulen+1 {
+			clientConn.Write([]byte{0x01, 0x01})
+			return
+		}
+		username := string(buf[2 : 2+ulen])
+		plen := int(buf[2+ulen])
+		if n < 2+ulen+1+plen {
+			clientConn.Write([]byte{0x01, 0x01})
+			return
+		}
+		password := string(buf[2+ulen+1 : 2+ulen+1+plen])
+
+		if username != s.cfg.ProxyUser || password != s.cfg.ProxyPass {
+			clientConn.Write([]byte{0x01, 0x01}) // auth failure
+			return
+		}
+		clientConn.Write([]byte{0x01, 0x00}) // auth success
+	} else {
+		// No auth required
+		clientConn.Write([]byte{0x05, 0x00})
+	}
 
 	// Read connect request
 	n, err = clientConn.Read(buf)
@@ -87,7 +216,13 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	target := parseTarget(buf[:n])
 
 	// Pick a healthy backend
-	backend, tunnel := s.pickBackend()
+	var backend string
+	var tunnel *tunnels.Tunnel
+	if picker != nil {
+		backend, tunnel = picker.pick()
+	} else {
+		backend, tunnel = s.pickBackend()
+	}
 	if backend == "" {
 		clientConn.Write([]byte{0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		log.Printf("[proxy] No healthy backends for %s", target)
