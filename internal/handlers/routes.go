@@ -44,10 +44,10 @@ func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker,
 	mux.HandleFunc("/api/wg/peers", func(w http.ResponseWriter, r *http.Request) {
 		handleWGPeers(w, r, wgs)
 	})
-	mux.HandleFunc("/api/wg/peers/", func(w http.ResponseWriter, r *http.Request) {
 	mux.HandleFunc("/api/wg/routing", func(w http.ResponseWriter, r *http.Request) {
 		if rc != nil { handleRouting(w, r, rc) } else { writeJSON(w, http.StatusNotFound, map[string]string{"error": "routing not available"}) }
 	})
+	mux.HandleFunc("/api/wg/peers/", func(w http.ResponseWriter, r *http.Request) {
 		handleWGPeerAction(w, r, wgs)
 	})
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
