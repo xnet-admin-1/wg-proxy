@@ -1,0 +1,15 @@
+# Binary
+wg-proxy
+/bin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Config secrets (keep examples only)
+configs/*.conf
+!configs/example-*.conf

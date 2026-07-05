@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WG-Proxy Dashboard</title>
+<meta name="theme-color" content="#7c4dff">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#121212;color:#e0e0e0;font-size:14px;min-height:100vh}
+.top-bar{background:#1e1e1e;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #333;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:100}
+.top-bar h1{font-size:18px;color:#fff;display:flex;align-items:center;gap:8px}
+.top-bar h1 .badge{background:#7c4dff;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.top-controls{display:flex;gap:8px;align-items:center}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;color:#fff;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:#7c4dff}
+.btn-danger{background:#c62828}
+.btn-success{background:#2e7d32}
+.container{padding:16px;max-width:1400px;margin:0 auto;display:grid;gap:16px}
+@media(min-width:1024px){.container{grid-template-columns:1fr 1fr;padding:24px}.card.full{grid-column:1/-1}}
+.card{background:#1e1e1e;border-radius:8px;padding:16px;border:1px solid #2a2a2a}
+.card-title{font-size:13px;color:#888;margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.stat-box{background:#252525;border-radius:8px;padding:12px;text-align:center}
+.stat-value{font-size:24px;font-weight:700;color:#7c4dff}
+.stat-label{font-size:11px;color:#888;margin-top:4px;text-transform:uppercase}
+.tunnel-list{display:flex;flex-direction:column;gap:8px}
+.tunnel-item{background:#252525;border-radius:8px;padding:12px 16px;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:12px;border-left:3px solid #555;transition:border-color .3s}
+.tunnel-item.healthy{border-left-color:#4caf50}
+.tunnel-item.unhealthy{border-left-color:#ff9800}
+.tunnel-item.error{border-left-color:#f44336}
+.tunnel-item.stopped{border-left-color:#555}
+.tunnel-item.starting{border-left-color:#2196f3}
+.tunnel-status{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.tunnel-status.healthy{background:#4caf50}
+.tunnel-status.unhealthy{background:#ff9800}
+.tunnel-status.error{background:#f44336}
+.tunnel-status.stopped{background:#555}
+.tunnel-status.starting{background:#2196f3;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.tunnel-info{display:flex;flex-direction:column;gap:2px}
+.tunnel-name{font-weight:600;color:#fff;font-size:14px}
+.tunnel-meta{font-size:11px;color:#888;display:flex;gap:12px;flex-wrap:wrap}
+.tunnel-stats{display:flex;gap:16px;font-size:12px;color:#aaa}
+.tunnel-stats span{display:flex;align-items:center;gap:4px}
+.tunnel-actions .btn{padding:5px 12px;font-size:11px}
+.traffic-bar{height:4px;background:#333;border-radius:2px;margin-top:4px;overflow:hidden}
+.traffic-bar-fill{height:100%;background:linear-gradient(90deg,#7c4dff,#448aff);border-radius:2px;transition:width .5s}
+.log-box{background:#0d0d0d;border-radius:8px;padding:8px;height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#aaa;scroll-behavior:smooth}
+.log-box::-webkit-scrollbar{width:6px}
+.log-box::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+.log-box div{padding:2px 4px;border-bottom:1px solid #1a1a1a}
+.log-box .ts{color:#555;margin-right:8px}
+.empty-state{text-align:center;padding:40px;color:#666}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:13px}
+.connection-indicator{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.connection-indicator.connected{background:#4caf50}
+.connection-indicator.disconnected{background:#f44336}
+</style>
+</head>
+<body>
+<div class="top-bar">
+<h1>WG-Proxy <span class="badge">GATEWAY</span></h1>
+<div class="top-controls">
+<span id="sseStatus"><span class="connection-indicator disconnected"></span>Connecting...</span>
+</div>
+</div>
+
+<div class="container">
+<div class="card full">
+<div class="card-title">Overview</div>
+<div class="stats-grid">
+<div class="stat-box"><div class="stat-value" id="st-healthy">0</div><div class="stat-label">Healthy</div></div>
+<div class="stat-box"><div class="stat-value" id="st-total">0</div><div class="stat-label">Total Tunnels</div></div>
+<div class="stat-box"><div class="stat-value" id="st-latency">-</div><div class="stat-label">Avg Latency</div></div>
+<div class="stat-box"><div class="stat-value" id="st-conns">0</div><div class="stat-label">Connections</div></div>
+<div class="stat-box"><div class="stat-value" id="st-in">0</div><div class="stat-label">Traffic In</div></div>
+<div class="stat-box"><div class="stat-value" id="st-out">0</div><div class="stat-label">Traffic Out</div></div>
+</div>
+</div>
+
+<div class="card full">
+<div class="card-title">Tunnels <span id="tunnelCount" style="color:#7c4dff"></span></div>
+<div class="tunnel-list" id="tunnelList">
+<div class="empty-state"><div class="icon">&#x1F50C;</div><p>No tunnels loaded. Place .conf files in the config directory.</p></div>
+</div>
+</div>
+
+<div class="card full">
+<div class="card-title">Activity Log <button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('logBox').innerHTML=''">Clear</button></div>
+<div class="log-box" id="logBox"></div>
+</div>
+</div>
+
+<script>
+(function(){
+var logBox=document.getElementById('logBox');
+var evtSource=null;
+var reconnectTimer=null;
+
+function formatBytes(b){
+if(b===0)return '0 B';
+var units=['B','KB','MB','GB','TB'];
+var i=Math.floor(Math.log(b)/Math.log(1024));
+if(i>=units.length)i=units.length-1;
+return (b/Math.pow(1024,i)).toFixed(i>0?1:0)+' '+units[i];
+}
+
+function addLog(msg){
+var d=document.createElement('div');
+var now=new Date();
+var ts=now.toTimeString().split(' ')[0];
+d.innerHTML='<span class="ts">'+ts+'</span>'+msg;
+logBox.appendChild(d);
+if(logBox.children.length>200){logBox.removeChild(logBox.firstChild)}
+logBox.scrollTop=logBox.scrollHeight;
+}
+
+function updateUI(data){
+document.getElementById('st-healthy').textContent=data.healthy_count||0;
+document.getElementById('st-total').textContent=data.total_count||0;
+document.getElementById('st-latency').textContent=data.avg_latency_ms>0?data.avg_latency_ms+'ms':'-';
+document.getElementById('st-conns').textContent=data.total_conns||0;
+document.getElementById('st-in').textContent=formatBytes(data.total_bytes_in||0);
+document.getElementById('st-out').textContent=formatBytes(data.total_bytes_out||0);
+
+var list=document.getElementById('tunnelList');
+var tunnels=data.tunnels||[];
+document.getElementById('tunnelCount').textContent=tunnels.length>0?tunnels.length+' configured':'';
+
+if(tunnels.length===0){
+list.innerHTML='<div class="empty-state"><div class="icon">&#x1F50C;</div><p>No tunnels loaded. Place .conf files in the config directory.</p></div>';
+return;
+}
+
+var html='';
+for(var i=0;i<tunnels.length;i++){
+var t=tunnels[i];
+var cls=t.status;
+html+='<div class="tunnel-item '+cls+'">';
+html+='<div class="tunnel-status '+cls+'"></div>';
+html+='<div class="tunnel-info">';
+html+='<div class="tunnel-name">'+t.name+'</div>';
+html+='<div class="tunnel-meta">';
+html+='<span>Port: '+t.port+'</span>';
+html+='<span>Status: '+t.status+'</span>';
+if(t.latency_ms>0)html+='<span>Latency: '+t.latency_ms+'ms</span>';
+if(t.uptime)html+='<span>Uptime: '+t.uptime+'</span>';
+if(t.error)html+='<span style="color:#f44336">'+t.error+'</span>';
+html+='</div></div>';
+html+='<div class="tunnel-stats">';
+html+='<span>&#x2B07; '+formatBytes(t.bytes_in)+'</span>';
+html+='<span>&#x2B06; '+formatBytes(t.bytes_out)+'</span>';
+html+='<span>&#x1F517; '+t.conn_count+'</span>';
+html+='</div>';
+html+='<div class="tunnel-actions">';
+html+='<button class="btn btn-primary" onclick="restartTunnel(\''+t.name+'\')">Restart</button>';
+html+='</div></div>';
+}
+list.innerHTML=html;
+}
+
+function connect(){
+if(evtSource){evtSource.close()}
+evtSource=new EventSource('/api/events');
+evtSource.onopen=function(){
+document.getElementById('sseStatus').innerHTML='<span class="connection-indicator connected"></span>Connected';
+addLog('<span style="color:#4caf50">SSE connected</span>');
+};
+evtSource.onmessage=function(e){
+try{var data=JSON.parse(e.data);updateUI(data)}catch(err){}
+};
+evtSource.onerror=function(){
+document.getElementById('sseStatus').innerHTML='<span class="connection-indicator disconnected"></span>Disconnected';
+evtSource.close();
+evtSource=null;
+if(reconnectTimer)clearTimeout(reconnectTimer);
+reconnectTimer=setTimeout(connect,3000);
+addLog('<span style="color:#f44336">SSE disconnected, reconnecting...</span>');
+};
+}
+
+window.restartTunnel=function(name){
+addLog('Restarting tunnel: <span style="color:#7c4dff">'+name+'</span>');
+fetch('/api/tunnels/'+name+'/restart',{method:'POST'})
+.then(function(r){return r.json()})
+.then(function(d){
+if(d.error)addLog('<span style="color:#f44336">Error: '+d.error+'</span>');
+else addLog('<span style="color:#4caf50">'+name+' restart initiated</span>');
+})
+.catch(function(e){addLog('<span style="color:#f44336">Request failed: '+e.message+'</span>')});
+};
+
+connect();
+addLog('Dashboard initialized');
+})();
+</script>
+</body></html>
