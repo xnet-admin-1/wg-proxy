@@ -103,7 +103,7 @@ func (rc *RoutingController) enableProxiedMode(proxyPort int) error {
 		// Masquerade for outbound
 		"iptables -t nat -C POSTROUTING -o ens5 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE",
 		// Update redsocks config
-		fmt.Sprintf(`cat > /etc/redsocks.conf << 'RCONF'
+		`cat > /etc/redsocks.conf << 'RCONF'
 base {
     log_debug = off;
     log_info = on;
@@ -115,10 +115,10 @@ redsocks {
     local_ip = 127.0.0.1;
     local_port = 12345;
     ip = 127.0.0.1;
-    port = %d;
+    port = 1090;
     type = socks5;
 }
-RCONF`, proxyPort),
+RCONF`,
 		// Restart redsocks
 		"systemctl restart redsocks",
 	}
