@@ -152,3 +152,14 @@ func runCmds(cmds []string) error {
 	}
 	return nil
 }
+
+
+// SetProxiedWithGoldPool picks a random port from the gold pool.
+func (rc *RoutingController) SetProxiedFromGold(goldPorts []int, country string) error {
+	if len(goldPorts) == 0 {
+		return fmt.Errorf("no HTTPS-verified backends available")
+	}
+	// Pick first gold port (they rotate on each deep check)
+	port := goldPorts[0]
+	return rc.SetMode(ModeProxied, country, port)
+}

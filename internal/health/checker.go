@@ -35,15 +35,17 @@ type Stats struct {
 
 // Checker performs periodic health checks on all tunnels.
 type Checker struct {
-	manager  *tunnels.Manager
-	interval time.Duration
-	timeout  time.Duration
-	stopCh   chan struct{}
-	wg       sync.WaitGroup
-	mu       sync.RWMutex
-	stats    Stats
-	exitIPs  map[string]string // tunnel name -> exit IP
-	ipMu     sync.RWMutex
+	manager   *tunnels.Manager
+	interval  time.Duration
+	timeout   time.Duration
+	stopCh    chan struct{}
+	wg        sync.WaitGroup
+	mu        sync.RWMutex
+	stats     Stats
+	exitIPs   map[string]string // tunnel name -> exit IP
+	ipMu      sync.RWMutex
+	goldPorts []int // HTTPS-verified backends (gold pool)
+	goldMu    sync.RWMutex
 }
 
 // NewChecker creates a new health checker.
@@ -160,6 +162,11 @@ func (c *Checker) checkAll() {
 	c.stats.AvgLatency = avgLatency
 	c.stats.LastCheckTime = time.Now()
 	c.mu.Unlock()
+
+	// Run HTTPS deep check every 5th cycle to maintain gold pool
+	if c.stats.TotalChecks%5 == 1 {
+		go c.deepCheckAll()
+	}
 }
 
 func (c *Checker) checkTunnel(t *tunnels.Tunnel) (time.Duration, error) {
@@ -225,4 +232,108 @@ func (c *Checker) resolveExitIP(t *tunnels.Tunnel) {
 	t.ExitIP = ip
 	t.Unlock()
 	log.Printf("[health] %s: exit IP resolved to %s", t.Name, ip)
+}
+
+
+// GetGoldPorts returns backends verified to pass HTTPS traffic.
+func (c *Checker) GetGoldPorts() []int {
+	c.goldMu.RLock()
+	defer c.goldMu.RUnlock()
+	result := make([]int, len(c.goldPorts))
+	copy(result, c.goldPorts)
+	return result
+}
+
+// deepCheckAll runs HTTPS-level verification on all healthy backends.
+func (c *Checker) deepCheckAll() {
+	tuns := c.manager.GetTunnels()
+	var gold []int
+	var dwg sync.WaitGroup
+	var mu sync.Mutex
+
+	// Check up to 50 concurrently
+	sem := make(chan struct{}, 50)
+
+	for _, t := range tuns {
+		t.RLock()
+		status := t.Status
+		port := t.ProxyPort
+		t.RUnlock()
+
+		if status != tunnels.StatusRunning {
+			continue
+		}
+
+		dwg.Add(1)
+		sem <- struct{}{}
+		go func(p int) {
+			defer dwg.Done()
+			defer func() { <-sem }()
+			if c.httpsProbe(p) {
+				mu.Lock()
+				gold = append(gold, p)
+				mu.Unlock()
+			}
+		}(port)
+	}
+
+	dwg.Wait()
+
+	c.goldMu.Lock()
+	c.goldPorts = gold
+	c.goldMu.Unlock()
+
+	log.Printf("[health] Gold pool updated: %d/%d backends pass HTTPS", len(gold), len(tuns))
+}
+
+// httpsProbe verifies a backend can complete a SOCKS5 CONNECT to port 443.
+func (c *Checker) httpsProbe(port int) bool {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(8 * time.Second))
+
+	// SOCKS5 greeting
+	conn.Write([]byte{0x05, 0x01, 0x00})
+	buf := make([]byte, 2)
+	if _, err := io.ReadFull(conn, buf); err != nil || buf[1] != 0x00 {
+		return false
+	}
+
+	// SOCKS5 CONNECT to example.com:443
+	host := "example.com"
+	req := []byte{0x05, 0x01, 0x00, 0x03, byte(len(host))}
+	req = append(req, []byte(host)...)
+	req = append(req, 0x01, 0xBB) // port 443 big-endian
+	conn.Write(req)
+
+	// Read SOCKS5 reply (at least 4 bytes)
+	reply := make([]byte, 4)
+	if _, err := io.ReadFull(conn, reply); err != nil {
+		return false
+	}
+	if reply[1] != 0x00 {
+		return false // connection failed
+	}
+
+	// Skip rest of SOCKS5 reply based on address type
+	switch reply[3] {
+	case 0x01: // IPv4
+		skip := make([]byte, 6) // 4 bytes IP + 2 bytes port
+		io.ReadFull(conn, skip)
+	case 0x03: // Domain
+		lenBuf := make([]byte, 1)
+		io.ReadFull(conn, lenBuf)
+		skip := make([]byte, int(lenBuf[0])+2)
+		io.ReadFull(conn, skip)
+	case 0x04: // IPv6
+		skip := make([]byte, 18) // 16 bytes IP + 2 bytes port
+		io.ReadFull(conn, skip)
+	}
+
+	// If we got here, SOCKS5 CONNECT to 443 succeeded = tunnel works for HTTPS
+	return true
 }

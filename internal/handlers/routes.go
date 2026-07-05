@@ -45,10 +45,14 @@ func RegisterRoutes(mux *http.ServeMux, tm *tunnels.Manager, hc *health.Checker,
 		handleWGPeers(w, r, wgs)
 	})
 	mux.HandleFunc("/api/wg/routing", func(w http.ResponseWriter, r *http.Request) {
-		if rc != nil { handleRouting(w, r, rc) } else { writeJSON(w, http.StatusNotFound, map[string]string{"error": "routing not available"}) }
+		if rc != nil { handleRouting(w, r, rc, hc) } else { writeJSON(w, http.StatusNotFound, map[string]string{"error": "routing not available"}) }
 	})
 	mux.HandleFunc("/api/wg/peers/", func(w http.ResponseWriter, r *http.Request) {
 		handleWGPeerAction(w, r, wgs)
+	})
+	mux.HandleFunc("/api/health/gold", func(w http.ResponseWriter, r *http.Request) {
+		gold := hc.GetGoldPorts()
+		writeJSON(w, http.StatusOK, map[string]interface{}{"gold_ports": gold, "count": len(gold)})
 	})
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		dash.HandleSSE(w, r)
@@ -417,7 +421,7 @@ func handleWGPeerAction(w http.ResponseWriter, r *http.Request, wgs *wgserver.Se
 }
 
 // handleRouting handles GET/POST /api/wg/routing
-func handleRouting(w http.ResponseWriter, r *http.Request, rc *wgserver.RoutingController) {
+func handleRouting(w http.ResponseWriter, r *http.Request, rc *wgserver.RoutingController, hc *health.Checker) {
 	if r.Method == http.MethodGet {
 		writeJSON(w, http.StatusOK, rc.GetStatus())
 		return
@@ -435,6 +439,16 @@ func handleRouting(w http.ResponseWriter, r *http.Request, rc *wgserver.RoutingC
 		mode := wgserver.ModeDirect
 		if req.Mode == "proxied" {
 			mode = wgserver.ModeProxied
+			// If no specific port requested, use gold pool
+			if req.Port == 0 {
+				gold := hc.GetGoldPorts()
+				if len(gold) > 0 {
+					req.Port = gold[0]
+				} else {
+					writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no HTTPS-verified backends available yet, try again in 30s"})
+					return
+				}
+			}
 		}
 		if err := rc.SetMode(mode, req.Country, req.Port); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
